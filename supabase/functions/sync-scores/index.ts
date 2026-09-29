@@ -6,8 +6,13 @@ const secretKey = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS')!)['default'];
 const admin = createClient(url, secretKey);
 
 Deno.serve(async (request: Request) => {
-  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  const origin = request.headers.get('Origin');
+  const allowedOrigin = origin === 'https://1nfected92.github.io' ? origin : 'https://1nfected92.github.io';
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': allowedOrigin, 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Vary': 'Origin' };
   const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers });
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
   if (request.method !== 'POST') return reply(405, { error: 'POST required' });
   const bearer = request.headers.get('Authorization')?.replace(/^Bearer /i, '');
   if (!bearer) return reply(401, { error: 'Sign in required' });
