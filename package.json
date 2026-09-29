@@ -1,0 +1,9 @@
+{
+  "name": "football-squares",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"test":"vitest run", "typecheck":"tsc --noEmit", "build":"vite build", "dev":"vite --host 127.0.0.1"},
+  "dependencies": {"@supabase/supabase-js":"2.57.4"},
+  "devDependencies": {"typescript":"5.9.2", "vitest":"3.2.4", "vite":"7.1.7"}
+}
