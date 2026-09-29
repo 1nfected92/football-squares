@@ -28,6 +28,10 @@ Migrations live under `supabase/migrations`. Apply them in order to a new dedica
 
 The security advisor flags intentional authenticated `SECURITY DEFINER` RPCs for manual review; each checks role/ownership and sets an empty search path. `audit_events` has RLS with no read policy and no client grant. These findings should be reviewed again before production expansion.
 
+## Auth redirect setup
+
+In Supabase Dashboard → Authentication → URL Configuration, set **Site URL** to `https://1nfected92.github.io/football-squares/` and add the same URL to **Redirect URLs**. Email confirmation is enabled; this setting is required before claiming signup confirmation works.
+
 ## Remaining before the approved full product
 
 - Provision an initial admin and agents through a controlled process; complete their UI flows and live browser tests.
