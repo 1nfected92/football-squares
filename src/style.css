@@ -3,3 +3,5 @@
 .week-tabs{display:flex;overflow:auto;gap:.5rem;margin:0 0 1.5rem;padding-bottom:.6rem}.week-tabs button{flex:0 0 auto;background:#14243e;color:#c9d6e8;border:1px solid #526585}.week-tabs button.active{background:#d8ad52;color:#111b2d;border-color:#f3d479}
 
 form label[hidden]{display:none}
+
+.role-picker{display:flex;gap:.7rem;flex-wrap:wrap;margin:1.5rem 0}.role-picker button{min-width:130px;background:#14243d;color:#f4d078}.role-picker button.active{background:linear-gradient(135deg,#e8c775,#ab7b2c);color:#10192c}
