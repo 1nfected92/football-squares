@@ -17,6 +17,12 @@ export function parseMatches(feed: any): Match[] {
   });
 }
 export function localDay(date: string) { const d = new Date(date); return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function staticMatches(data: any): Match[] {
+  return (Array.isArray(data?.games) ? data.games : []).map((g: any) => {
+    const team = (name: string, score: unknown, lines: any[]): Team => ({ name, short: name.split(/\s+/).map(x => x[0]).join('').slice(-3).toUpperCase(), color: '#345574', accent: '#c59b4a', logo: '', score: String(score ?? '0'), record: '', quarters: (lines || []).map((q: any) => String(q.displayValue ?? q.value ?? '—')) });
+    return { id: String(g.id), date: g.kickoff_at || '', home: team(g.home_team || 'Home', g.home_score, g.linescores?.home), away: team(g.away_team || 'Away', g.away_score, g.linescores?.away), state: g.status === 'final' ? 'post' : g.status === 'live' ? 'in' : 'pre', detail: g.status === 'final' ? 'Final' : g.status === 'live' ? 'In Progress' : 'Scheduled', clock: g.clock || '', period: Number(g.period || 0), venue: 'Venue details unavailable', broadcast: '', situation: '', lastPlay: '' };
+  });
+}
 const when = (value: string) => Number.isNaN(Date.parse(value)) ? 'Time TBD' : new Intl.DateTimeFormat(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}).format(new Date(value));
 let year = new Date().getFullYear(), seasonType = 2, week = 1, chosenDate = '', chosenGame = '', search = '', mode = 'current';
 let matches: Match[] = [], loading = false, failure = '', updated = '', requestId = 0, started = false;
@@ -48,7 +54,13 @@ async function load() {
     const res=await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?${query}`,{signal});if(!res.ok)throw new Error('Score provider unavailable');const feed=await res.json();if(!Array.isArray(feed.events))throw new Error('Invalid scoreboard response');if(id!==requestId)return;
     if(mode==='current'){year=feed.season?.year||year;seasonType=Number(feed.season?.type)||2;week=Number(feed.week?.number)||1;mode='week';clearTimeout(timeout);await load();return;}
     matches=parseMatches(feed);updated=new Date().toLocaleTimeString();
-  } catch(error) {if(id!==requestId)return;failure=error instanceof Error&&error.name==='AbortError'?'Score request timed out. Try Refresh.':'Cannot reach the score provider. Try Refresh.';}
+  } catch(error) {
+    if(id!==requestId)return;
+    if(mode==='date') {
+      try { const fallback=await fetch(`${import.meta.env.BASE_URL}schedule.json`,{signal}); const data=await fallback.json(); matches=staticMatches(data).filter(g=>localDay(g.date)===chosenDate); failure=matches.length?'Live date feed unavailable; showing the saved schedule.':'No games found for this date.'; }
+      catch { failure=error instanceof Error&&error.name==='AbortError'?'Score request timed out. Try Refresh.':'Cannot reach the score provider. Try Refresh.'; }
+    } else failure=error instanceof Error&&error.name==='AbortError'?'Score request timed out. Try Refresh.':'Cannot reach the score provider. Try Refresh.';
+  }
   finally{clearTimeout(timeout);if(id===requestId){loading=false;draw();}}
 }
 export function mountSchedule() {
