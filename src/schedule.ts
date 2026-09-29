@@ -44,7 +44,7 @@ async function load() {
   try {
     const query=new URLSearchParams({limit:'100'});
     if(mode==='week'){query.set('dates',String(year));query.set('seasontype',String(seasonType));query.set('week',String(week));}
-    if(mode==='date'){const d=new Date(`${chosenDate}T12:00:00`),a=new Date(d),b=new Date(d);a.setDate(a.getDate()-1);b.setDate(b.getDate()+1);query.set('dates',`${localDay(a.toISOString()).replaceAll('-','')}-${localDay(b.toISOString()).replaceAll('-','')}`);}
+    if(mode==='date'){query.set('dates',chosenDate.replaceAll('-',''));query.set('limit','100');}
     const res=await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?${query}`,{signal});if(!res.ok)throw new Error('Score provider unavailable');const feed=await res.json();if(!Array.isArray(feed.events))throw new Error('Invalid scoreboard response');if(id!==requestId)return;
     if(mode==='current'){year=feed.season?.year||year;seasonType=Number(feed.season?.type)||2;week=Number(feed.week?.number)||1;mode='week';clearTimeout(timeout);await load();return;}
     matches=parseMatches(feed);updated=new Date().toLocaleTimeString();
