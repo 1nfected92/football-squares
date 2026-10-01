@@ -32,7 +32,7 @@ function kickoffCountdown(value: string) {
   return `in ${hours ? `${hours}h ` : ''}${String(minutes).padStart(2,'0')}m ${String(seconds).padStart(2,'0')}s`;
 }
 let year = new Date().getFullYear(), seasonType = 2, week = 1, chosenDate = '', chosenGame = '', search = '', mode = 'current';
-let matches: Match[] = [], loading = false, failure = '', updated = '', requestId = 0, started = false;
+let matches: Match[] = [], loading = false, failure = '', updated = '', requestId = 0, started = false, renderedSignature = '';
 let controller: AbortController | null = null;
 const SCORE_REFRESH_MS = 10_000;
 const weekCount = () => seasonType === 2 ? 18 : seasonType === 1 ? 4 : 5;
@@ -44,24 +44,45 @@ function card(g: Match, index: number, expanded = false) {
   const live = g.state === 'in', pre = g.state === 'pre';
   return `<article class="match-card ${live ? 'is-live' : ''} ${expanded ? 'expanded' : ''}" style="--away:${g.away.color};--home:${g.home.color};--delay:${Math.min(index,8)*45}ms"><div class="match-meta"><span class="match-status ${live ? 'live-badge' : ''}">${live ? '● LIVE' : g.state === 'post' ? 'FINAL' : esc(g.detail)}</span><span>${esc(when(g.date))}</span></div><div class="helmet-match"><div class="team-face">${helmet(g.away,'away')}<span class="team-abbr">${esc(g.away.short)}</span><h3>${esc(g.away.name)}</h3><small>AWAY ${esc(g.away.record)}</small></div><div class="match-score">${pre ? '<strong class="versus">VS</strong>' : `<strong>${esc(g.away.score)}<i>:</i>${esc(g.home.score)}</strong>`}<span class="game-clock">${live ? `${g.period > 4 ? 'OT' : `Q${g.period}`} · ${esc(g.clock || 'Clock unavailable')}` : pre ? `<span class="kickoff-label">KICKOFF <b data-kickoff="${esc(g.date)}">${kickoffCountdown(g.date)}</b></span>` : esc(g.detail)}</span>${live && g.situation ? `<small>${esc(g.situation)}</small>` : ''}</div><div class="team-face">${helmet(g.home,'home')}<span class="team-abbr">${esc(g.home.short)}</span><h3>${esc(g.home.name)}</h3><small>HOME ${esc(g.home.record)}</small></div></div><div class="match-foot"><span>${esc(g.venue)}${g.broadcast ? ` · ${esc(g.broadcast)}` : ''}</span><span class="game-actions"><button type="button" data-open-boards="${esc(g.id)}">Open active boards</button><button type="button" data-match="${esc(g.id)}">${expanded ? 'Show all games' : 'Game details'} ↗</button></span></div>${expanded ? `<div class="game-detail"><h3>Score by quarter</h3><div class="quarter-scroll"><table><thead><tr><th>Team</th>${Array.from({length:Math.max(4,g.home.quarters.length,g.away.quarters.length)},(_,i)=>`<th>${i<4?`Q${i+1}`:'OT'}</th>`).join('')}<th>Total</th></tr></thead><tbody>${[g.away,g.home].map(t=>`<tr><th>${esc(t.short)}</th>${Array.from({length:Math.max(4,g.home.quarters.length,g.away.quarters.length)},(_,i)=>`<td>${esc(t.quarters[i] ?? '—')}</td>`).join('')}<td>${pre?'—':esc(t.score)}</td></tr>`).join('')}</tbody></table></div>${g.lastPlay ? `<p><b>Latest play</b> ${esc(g.lastPlay)}</p>` : ''}<p>${pre?'Scores appear when the game starts.':live?'Game clock is reported by the score provider; it may pause or be delayed.':'Completed game.'}</p></div>` : ''}</article>`;
 }
-function draw() {
+function matchSignature(list: Match[]) {
+  return JSON.stringify(list.map(g => [g.id,g.state,g.detail,g.clock,g.period,g.away.score,g.home.score,g.situation,g.lastPlay]));
+}
+function updateRefreshStatus() {
+  const status = document.querySelector<HTMLElement>('.feed-status');
+  if (!status) return;
+  const small = status.querySelector('small');
+  if (small) small.textContent = updated ? `Updated ${updated}` : 'Automatic refresh every 10 seconds';
+  const button = status.querySelector<HTMLButtonElement>('[data-schedule-refresh]');
+  if (button) button.disabled = false;
+}
+function draw(refresh = false) {
   const host = document.querySelector<HTMLElement>('#schedule-hub'); if (!host) return;
   const visible = matches.filter(g => (!chosenDate || localDay(g.date) === chosenDate) && (!search || `${g.home.name} ${g.away.name}`.toLowerCase().includes(search)));
   const filtered = chosenGame ? visible.filter(g => g.id === chosenGame) : visible;
-  host.innerHTML = `<section class="schedule-hub" aria-label="NFL schedule and scores"><div class="stadium-glow"></div><header class="schedule-heading"><div><p class="eyebrow">NFL GAME CENTER</p><h2>EVERY GAME.<br><span>EVERY MOMENT.</span></h2><p>Pick your matchup. Follow the action.</p></div><div class="feed-status"><span class="feed-dot ${failure?'offline':''}"></span>${loading ? 'Updating scores…' : failure ? 'Feed unavailable' : updated ? 'ESPN score feed' : 'Connecting…'}<small>${updated ? `Updated ${esc(updated)}` : 'Automatic refresh every 10 seconds'}</small><button type="button" data-schedule-refresh ${loading?'disabled':''}>↻ Refresh</button></div></header><div class="schedule-filters"><label>Season<select data-filter="year">${Array.from({length:Math.max(1,new Date().getFullYear()+2-2020)},(_,i)=>2020+i).map(y=>`<option ${year===y?'selected':''}>${y}</option>`).join('')}</select></label><label>Stage<select data-filter="type"><option value="1" ${seasonType===1?'selected':''}>Preseason</option><option value="2" ${seasonType===2?'selected':''}>Regular season</option><option value="3" ${seasonType===3?'selected':''}>Postseason</option></select></label><label>Week<select data-filter="week">${Array.from({length:weekCount()},(_,i)=>`<option value="${i+1}" ${week===i+1?'selected':''}>${weekName(i+1)}</option>`).join('')}</select></label><label>Choose date<input data-filter="date" type="date" value="${chosenDate}"></label><label>Game<select data-filter="game"><option value="">All games</option>${visible.map(g=>`<option value="${esc(g.id)}" ${g.id===chosenGame?'selected':''}>${esc(g.away.short)} at ${esc(g.home.short)}</option>`).join('')}</select></label><button type="button" data-schedule-current>Current week</button></div><div class="schedule-summary"><span>${chosenDate ? esc(chosenDate) : `${year} · ${weekName(week)}`} <b>${visible.length} games</b></span><span>Times in ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</span></div>${failure?`<p class="feed-warning" role="status">${esc(failure)}${matches.length?' Showing the last received scores; they may be out of date.':''}</p>`:''}<div class="match-cards ${chosenGame?'single-match':''}">${filtered.map((g,i)=>card(g,i,!!chosenGame)).join('') || `<div class="schedule-empty">${loading?'Loading matchups…':'No games scheduled for this selection. Choose another date or week.'}</div>`}</div><p class="feed-note">ESPN public scoreboard · Refreshes every 10 seconds while this page is visible. Availability and score delays depend on the provider.</p></section>`;
+  const active = refresh ? document.activeElement as HTMLInputElement : null;
+  const activeFilter = active?.dataset?.filter || '';
+  const activeValue = active?.value || '';
+  const activeSelection = active && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+  host.innerHTML = `<section class="schedule-hub ${refresh?'is-refreshing':''}" aria-label="NFL schedule and scores"><div class="stadium-glow"></div><header class="schedule-heading"><div><p class="eyebrow">NFL GAME CENTER</p><h2>EVERY GAME.<br><span>EVERY MOMENT.</span></h2><p>Pick your matchup. Follow the action.</p></div><div class="feed-status"><span class="feed-dot ${failure?'offline':''}"></span>${loading ? 'Updating scores…' : failure ? 'Feed unavailable' : updated ? 'ESPN score feed' : 'Connecting…'}<small>${updated ? `Updated ${esc(updated)}` : 'Automatic refresh every 10 seconds'}</small><button type="button" data-schedule-refresh ${loading?'disabled':''}>↻ Refresh</button></div></header><div class="schedule-filters"><label>Season<select data-filter="year">${Array.from({length:Math.max(1,new Date().getFullYear()+2-2020)},(_,i)=>2020+i).map(y=>`<option ${year===y?'selected':''}>${y}</option>`).join('')}</select></label><label>Stage<select data-filter="type"><option value="1" ${seasonType===1?'selected':''}>Preseason</option><option value="2" ${seasonType===2?'selected':''}>Regular season</option><option value="3" ${seasonType===3?'selected':''}>Postseason</option></select></label><label>Week<select data-filter="week">${Array.from({length:weekCount()},(_,i)=>`<option value="${i+1}" ${week===i+1?'selected':''}>${weekName(i+1)}</option>`).join('')}</select></label><label>Choose date<input data-filter="date" type="date" value="${chosenDate}"></label><label>Game<select data-filter="game"><option value="">All games</option>${visible.map(g=>`<option value="${esc(g.id)}" ${g.id===chosenGame?'selected':''}>${esc(g.away.short)} at ${esc(g.home.short)}</option>`).join('')}</select></label><button type="button" data-schedule-current>Current week</button></div><div class="schedule-summary"><span>${chosenDate ? esc(chosenDate) : `${year} · ${weekName(week)}`} <b>${visible.length} games</b></span><span>Times in ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}</span></div>${failure?`<p class="feed-warning" role="status">${esc(failure)}${matches.length?' Showing the last received scores; they may be out of date.':''}</p>`:''}<div class="match-cards ${chosenGame?'single-match':''}">${filtered.map((g,i)=>card(g,i,!!chosenGame)).join('') || `<div class="schedule-empty">${loading?'Loading matchups…':'No games scheduled for this selection. Choose another date or week.'}</div>`}</div><p class="feed-note">ESPN public scoreboard · Refreshes every 10 seconds while this page is visible. Availability and score delays depend on the provider.</p></section>`;
+  if (activeFilter) { const next = host.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-filter="${activeFilter}"]`); if (next) { next.value = activeValue; next.focus(); if (activeSelection && 'setSelectionRange' in next) (next as HTMLInputElement).setSelectionRange(activeSelection[0], activeSelection[1]); } }
   host.onchange = e => { const t = e.target as HTMLInputElement; const key=t.dataset.filter; if(!key)return; if(key==='game'){chosenGame=t.value;draw();return;} chosenGame='';matches=[]; if(key==='date'){chosenDate=t.value;mode=chosenDate?'date':'week';} else {chosenDate='';mode='week';if(key==='year')year=Number(t.value);if(key==='type'){seasonType=Number(t.value);week=1;}if(key==='week')week=Number(t.value);} void load(); };
   host.onclick = e => { const t=(e.target as HTMLElement).closest<HTMLElement>('button');if(!t)return; if(t.dataset.openBoards){const game=matches.find(g=>g.id===t.dataset.openBoards);if(game)window.dispatchEvent(new CustomEvent('football-game-selected',{detail:{id:game.id,away:game.away.name,home:game.home.name}}));return;}if(t.dataset.match){chosenGame=chosenGame===t.dataset.match?'':t.dataset.match;draw();}if(t.hasAttribute('data-schedule-refresh'))void load();if(t.hasAttribute('data-schedule-current')){mode='current';chosenDate='';chosenGame='';matches=[];void load();} };
 }
-async function load() {
-  const id=++requestId;controller?.abort();controller=new AbortController();const signal=controller.signal;loading=true;failure='';draw();
+async function load(background = false) {
+  const id=++requestId;controller?.abort();controller=new AbortController();const signal=controller.signal;loading=true;failure='';if (!background) draw();
   const timeout=setTimeout(()=>controller?.signal===signal&&controller.abort(),15000);
+  let changed = false;
   try {
     const query=new URLSearchParams({limit:'100'});
     if(mode==='week'){query.set('dates',String(year));query.set('seasontype',String(seasonType));query.set('week',String(week));}
     if(mode==='date'){query.set('dates',chosenDate.replaceAll('-',''));query.set('limit','100');}
     const res=await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard?${query}`,{signal});if(!res.ok)throw new Error('Score provider unavailable');const feed=await res.json();if(!Array.isArray(feed.events))throw new Error('Invalid scoreboard response');if(id!==requestId)return;
     if(mode==='current'){year=feed.season?.year||year;seasonType=Number(feed.season?.type)||2;week=Number(feed.week?.number)||1;mode='week';clearTimeout(timeout);await load();return;}
-    matches=parseMatches(feed);updated=new Date().toLocaleTimeString();
+    const nextMatches = parseMatches(feed); updated=new Date().toLocaleTimeString();
+    const nextSignature = matchSignature(nextMatches);
+    changed = nextSignature !== renderedSignature;
+    matches=nextMatches;
+    if (changed) renderedSignature=nextSignature;
   } catch(error) {
     if(id!==requestId)return;
     if(mode==='date') {
@@ -69,9 +90,9 @@ async function load() {
       catch { failure=error instanceof Error&&error.name==='AbortError'?'Score request timed out. Try Refresh.':'Cannot reach the score provider. Try Refresh.'; }
     } else failure=error instanceof Error&&error.name==='AbortError'?'Score request timed out. Try Refresh.':'Cannot reach the score provider. Try Refresh.';
   }
-  finally{clearTimeout(timeout);if(id===requestId){loading=false;draw();}}
+  finally{clearTimeout(timeout);if(id===requestId){loading=false;if (changed) draw(background); else updateRefreshStatus();}}
 }
 export function mountSchedule() {
-  draw();if(started)return;started=true;void load();setInterval(()=>{if(!document.hidden&&document.querySelector('#schedule-hub')&&!loading)void load();},SCORE_REFRESH_MS);
+  draw();if(started)return;started=true;void load();setInterval(()=>{if(!document.hidden&&document.querySelector('#schedule-hub')&&!loading)void load(true);},SCORE_REFRESH_MS);
   setInterval(()=>{if(document.hidden)return;document.querySelectorAll<HTMLElement>('[data-kickoff]').forEach(el=>{el.textContent=kickoffCountdown(el.dataset.kickoff||'');});},1000);
 }
